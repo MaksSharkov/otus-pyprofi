@@ -20,7 +20,7 @@ config = {
     "REPORT_SIZE": 1000,
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
-    "DEFAULT_CONFIG_PAH": "config.cfg",
+    "DEFAULT_CONFIG_PATH": "config.cfg",
 }
 
 
@@ -43,7 +43,7 @@ def parse_config_file(config_file):
                 key, value = line.split("=")
                 config_dict[key.strip()] = value.strip()
     except Exception as err:
-        print(f"Config file cannot be parsed: {err}")
+        raise Exception(f"Config file cannot be parsed: {err}") from err
 
     return config_dict
 
@@ -54,16 +54,16 @@ def load_config(conf):
     """
     config_dict = {}
     if len(sys.argv) < 2:
-        if not os.path.exists(conf["DEFAULT_CONFIG_PAH"]):
+        if not os.path.exists(conf["DEFAULT_CONFIG_PATH"]):
             raise FileNotFoundError(
                 """File conf.cfg not found.
             Please check that file conf.cfg exist in this directory.
-            Or provide path to conf.cfg file by --conf=file_path argument"""
+            Or provide path to conf.cfg file by --config=file_path argument"""
             )
         config_dict = parse_config_file("./config.cfg")
     else:
         for arg in sys.argv:
-            if arg.startswith("--conf="):
+            if arg.startswith("--config="):
                 config_file = arg.split("=")[1]
                 config_dict = parse_config_file(config_file)
 
@@ -84,6 +84,7 @@ def get_latest_log(conf):
 
     for filename in os.listdir(conf["LOG_DIR"]):
         match = log_regexp.match(filename)
+        logging.debug(match)
         if match and int(match.group(2)) > latest_log_date:
             latest_log_date = int(match.group(2))
             latest_log_path = f"{conf['LOG_DIR']}/{filename}"
@@ -100,14 +101,16 @@ def main():
         level=config["LOG_LEVEL"] if "LOG_LEVEL" in config else logging.INFO,
         format="[%(asctime)s] %(levelname).1s %(message)s",
         datefmt="%Y.%m.%d %H:%M:%S",
+        filename=config["LOG_FILE"] if "LOG_FILE" in config else None,
     )
+    logging.error("Starting log analyzer...")
     try:
         latest_log_path, latest_log_date, zipped = get_latest_log(config)
         logging.info("Latest log file: %s", latest_log_path)
-        logging.info("Latest log date: %s", latest_log_date)
-        logging.info("Zipped: %s", zipped)
+        logging.debug("Latest log date: %s", latest_log_date)
+        logging.debug("Latest log file zipped: %s", zipped)
     except Exception as err:
-        logging.exception("Unexpected error: %s", err)
+        logging.exception("Unexpected error: %s", err, exc_info=err)
 
 
 if __name__ == "__main__":
