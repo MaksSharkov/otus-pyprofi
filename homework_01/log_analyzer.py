@@ -16,6 +16,7 @@ import os
 import re
 import logging
 import sys
+from string import Template
 
 config = {
     "REPORT_SIZE": 1000,
@@ -24,6 +25,9 @@ config = {
     "DEFAULT_CONFIG_PATH": "./config.cfg",
     "RE_NGINX_LOG_FORMAT": r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) (-|\w*)  (-|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,"
     r'3}) \[(.*)\] ".* (.*) .*" (\d*) (\d*) "(.*?)" "(.*?)" "(.*?)" "(.*?)" "(.*?)" (\d*.\d*)$',
+    "REPORT_FILE": "report-{yyyy}.{mm}.{dd}.html",
+    "REPORT_TEMPLATE": "report.html",
+    "REPORT_INSERT_POINT": "table_json",
 }
 
 
@@ -127,7 +131,7 @@ def read_lines(file_path, regexp):
         if total == 1000000:
             break
         if total % 100000 == 0:
-            logging.info("Processed %s lines", '{0:,}'.format(total).replace(',', ' '))
+            logging.info("Processed %s lines", "{0:,}".format(total).replace(",", " "))
         if parsed_line:
             processed += 1
             yield parsed_line
@@ -145,12 +149,13 @@ def parse_logfile(conf, log_path):
     stats = {}
     logging.debug("Reading log file: %s", log_path)
     regexp = re.compile(conf["RE_NGINX_LOG_FORMAT"])
-    stats = {}
     uniq_urls_count = 0
     all_req_time = 0
     for line in read_lines(log_path, regexp):
         if "parsing_stats" in line:
             stats["parsing_stats"] = line["parsing_stats"]
+            stats["parsing_stats"]["uniq_urls_count"] = uniq_urls_count
+            stats["parsing_stats"]["all_req_time"] = all_req_time
         elif line["url"] not in stats:
             stats[line["url"]] = {}
             stats[line["url"]]["url"] = line["url"]
@@ -161,10 +166,46 @@ def parse_logfile(conf, log_path):
         else:
             stats[line["url"]]["time_arr"].append(line["request_time"])
 
-    # for item in stats:
-    #     print(stats[item])
-    print(uniq_urls_count)
-    print(all_req_time)
+    return stats
+
+
+def actual_report_exists(conf, date):
+    """
+    Check if report exists.
+    :param date: report date for check
+    :param conf: config dict
+    :return: True if report exists, False otherwise and report path
+    """
+    report_date = re.match(r"^(\d{4})(\d{2})(\d{2})$", str(date))
+    report_file = conf["REPORT_FILE"].format(
+        yyyy=report_date.group(1),
+        yy=report_date.group(1)[2:4],
+        mm=report_date.group(2),
+        dd=report_date.group(3),
+    )
+    report_path = conf["REPORT_DIR"] + "/" + report_file
+    return os.path.exists(report_path), report_path
+
+
+def generate_report(conf, report_path, stats):
+    """
+    Generate report.
+    :param conf: config dict
+    :param report_path: path to result report file
+    :param stats: ready to report stats list
+    :return: None
+    """
+    report_template = conf["REPORT_DIR"] + "/" + conf["REPORT_TEMPLATE"]
+    report_insert_point = conf["REPORT_INSERT_POINT"]
+    replace_dict = {conf["REPORT_INSERT_POINT"]: stats}
+    with open(report_template, "r", encoding="UTF-8") as template:
+        with open(report_path, "w", encoding="UTF-8") as report:
+            for line in template:
+                report.write(Template(line).safe_substitute(replace_dict))
+
+
+def calculate_stats(config, raw_stats):
+    return []
 
 
 def main():
@@ -184,7 +225,13 @@ def main():
         latest_log_path, latest_log_date = get_latest_log(config)
         logging.info("Latest log file: %s", latest_log_path)
         logging.debug("Latest log date: %s", latest_log_date)
-        parse_logfile(config, latest_log_path)
+        report_exists, report_path = actual_report_exists(config, latest_log_date)
+        if not report_exists:
+            raw_stats = parse_logfile(config, latest_log_path)
+            stats = calculate_stats(config, raw_stats)
+            generate_report(config, report_path, stats)
+        else:
+            logging.info("Report already exists.")
         logging.error("Log analyzer finished work. Have a nice day! :)")
     except Exception as err:
         logging.exception("Unexpected error: %s", err, exc_info=err)
