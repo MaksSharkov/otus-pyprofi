@@ -20,6 +20,7 @@
 * REPORT_FILE - имя файла отчёта. Допустимые подстановки: {yyyy}, {yy}, {mm}, {dd}
 * REPORT_TEMPLATE - файл шаблона отчёта
 * REPORT_INSERT_POINT - подстрока вместо которой будет подставлена статистика в шаблон 
+* RE_LOG_FILE - regexp выражение для поиска логов в директории
 
 Пример команды для запуска: python3 --config=/home/makssh/log_analyzer/conf.cfg
 
